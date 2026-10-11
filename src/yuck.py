@@ -13,7 +13,7 @@ class Token:
         return f'{self.token_type} {self.raw_token} {self.string_token}'
 
 # each type of token so i can easily reference them in the scanner
-# this is refered to as lexeme but it is easier for me to think of it as a token type
+# this is refered to as 'lexeme' but it is easier for me to think of it as a token type
 class TokenType:
     # raw token type = string token type
     # single character tokens
@@ -30,6 +30,7 @@ class TokenType:
     STAR = 'STAR'
     NUMBER = 'NUMBER'
     EOF = 'EOF'
+    POWER = 'POWER'
 
     # one or two character tokens
     BANG = 'BANG'
@@ -64,8 +65,55 @@ class TokenType:
     STRING = 'STRING'
     NUMBER = 'NUMBER'
 
-   
-    
+# This is going to be the class for storing the literal value from the literal expression
+class Literal:
+    def __init__(self, value):
+        self.value = value
+
+# This is going to be the class for storing my expression inside of parentheses 
+class Grouping:
+    def __init__(self, expression):
+        self.expression = expression
+
+# This class is going to be the operator and the expression that is tied to that like "-123." operator is the token and right is the expression for it
+class Unary:
+    def __init__(self, operator, right):
+        self.operator = operator
+        self.right = right
+
+# This class is going to be the class that has a left expression, an operator, and a right expression. 
+class Binary:
+    def __init__(self, left, operator, right):
+        self.left = left
+        self.operator = operator
+        self.right = right
+
+
+# This class is going to be my printer that prints the actual AST expression as text and yells at you if its not recognized/supported
+class AstPrinter:
+    def magic_printer(self, expression):
+        if isinstance(expression, Literal): # if its a literal expression
+            if expression.value is None:
+                return "nil"
+            if expression.value is True:
+                return "true"
+            if expression.value is False:
+                return "false"
+            return str(expression.value)
+        
+        elif isinstance(expression, Grouping): # if the expression is a group
+            return "(group expression: " + self.magic_printer(expression.expression) + ")" # recursively prints the inner expression
+
+        elif isinstance(expression, Unary): # if its an operator type like ! = + - 
+            return "(" + expression.operator.raw_token + " " + self.magic_printer(expression.right) + ")"
+
+        elif isinstance(expression, Binary): # prints the operator first, left, then right expression
+            return "(" + expression.operator.raw_token + " " + self.magic_printer(expression.left) + " " + self.magic_printer(expression.right) + ")"
+
+        
+        else: # if its strange
+            raise TypeError(f"uhhhh, not quite sure what this is: {type(expression).__name__}")
+
 
 
 # my scanner will scan the text from the input and make a list of the tokens it sees so we can
@@ -108,7 +156,7 @@ class Scanner:
         character = self.input_text[self.current_index]
         self.current_index += 1
 
-        # checking for special characters like new line, whitespace, tap, return and whatever I can think of that I dont want in the token list
+        # checking for special characters like new line, whitespace, tab, return and whatever I can think of that I dont want in the token list
         if character in ' \r\t':
             return None
         
@@ -123,8 +171,11 @@ class Scanner:
 
         self.token_list.append(
         Token(token_type, original_text, interpreted_value, line_number)
-        )"""
+        )""" 
+        # NOTE: I should probably just make this append action into a function later to help with readability
+
         # START OF AI HELP (I replaced the psudocode it gave me with my code)
+        # After making all of my 'if' statements, I relized that I didn't account for the double characters and went back and imbedded that logic in the 'if' statement I needed to
 
         # single character tokens
         if character == '(':
@@ -163,9 +214,13 @@ class Scanner:
             else:
                 self.token_list.append(Token(TokenType.SLASH, character, character, self.line_number))
             
-
+        # checking if we have multiplcation or power - NOTE reminder to edit test_scanner.py to test this after dinner!!!!!
         if character == '*':
-            self.token_list.append(Token(TokenType.STAR, character, character, self.line_number))
+            if self.current_index < len(self.input_text) and self.input_text[self.current_index] == '*':
+                self.current_index += 1
+                self.token_list.append(Token(TokenType.POWER, character + '*', character + '*', self.line_number))
+            else:
+                self.token_list.append(Token(TokenType.STAR, character, character, self.line_number))
 
         # checking if ! and if the next character is '=' then it is BANG_EQUAL, else its just BANG. Same thing for the other 2 character tokens
         if character == '!':
@@ -276,7 +331,30 @@ class Scanner:
         )
         if not valid_characters:
             print(f"Woah there, what on earth is this: {character!r} look at line {self.line_number} and maybe try and fix that")
+
         
+#NOTE: Add parser here eventually. It will need to be 'Recursive Descent Parsing'
+# There are many techniques: LL(k), LR(1), LALR 
+"""
+Here is a helpful note from lecture
+
+expression → equality ;
+equality → comparison ( ( "!=" | "==" ) comparison )* ;
+comparison → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+term → factor ( ( "-" | "+" ) factor )* ;
+factor → unary ( ( "/" | "*" ) unary )* ;
+unary → ( "!" | "-" ) unary
+| primary ;
+primary → NUMBER | STRING | "true" | "false" | "nil"
+| "(" expression ")" ;
+
+"""
+class Parser:
+    pass
+
+# End of parser
+
+
 
 
 def run(input_text):
