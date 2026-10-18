@@ -349,8 +349,236 @@ primary → NUMBER | STRING | "true" | "false" | "nil"
 | "(" expression ")" ;
 
 """
+# I asked AI to help with a play by play on what I needed to do to get this going
+# START OF AI HELP
+# 1. Start with the tokens from the scanner. The parser needs those tokens
+#    so it can read the input one piece at a time.
+#
+# 2. Keep track of which token you are currently reading. Add small helper
+#    methods to look at the current token, move to the next token, and check
+#    whether the current token is the one you need.
+#
+# 3. Write a method for the simplest parts of an expression first. This
+#    method should recognize literals like numbers, strings, true, false,
+#    and nil. It should also recognize an opening parenthesis, parse the
+#    expression inside it, and look for the closing parenthesis.
+#
+# 4. Build the AST as you read. Put literal values in Literal nodes,
+#    parenthesized expressions in Grouping nodes, unary expressions in
+#    Unary nodes, and expressions with two sides in Binary nodes.
+#
+# 5. Add a parsing method for each operator-precedence level. Start with
+#    the methods for operators that bind most tightly, then have each next
+#    method call the tighter level beneath it. This makes multiplication
+#    stay grouped inside addition, for example.
+#
+# 6. For operators that group from the left, use a loop: parse the left
+#    expression, find an operator, parse the right expression, and combine
+#    them into a Binary node. Keep combining while there are more operators
+#    at that level.
+#
+# 7. For an operator that groups from the right, like **, parse its right
+#    side by calling the same parsing method again. This makes
+#    2 ** 3 ** 2 group as 2 ** (3 ** 2).
+#
+# 8. Make the main expression method start at the lowest-precedence level.
+#    The parser will then work down through the tighter levels until it
+#    reaches a literal or a grouped expression.
+#
+# 9. Make an entry-point method parse the expression and then check that
+#    the next token is EOF. If it is not, report the leftover token as an
+#    error instead of ignoring it.
+#
+# 10. Connect the parser to the program: scan the input, pass the tokens
+#     to the parser, then send the finished AST to the printer. Test both
+#     valid expressions and invalid input so you can check the AST shape
+#     and make sure errors are reported.
+# END OF AI HELP
+
 class Parser:
-    pass
+    def __init__(self, tokens):
+        self.tokens = tokens # the list returned by our scanner
+        self.current = 0 # starting position
+
+    # allowing us to look at the current token type without moving forward
+    def look_at_current_token(self):
+        return self.tokens[self.current]
+
+    # checks to see if the current token is EOF
+    def check_for_eof(self):
+        return self.look_at_current_token().token_type == TokenType.EOF
+
+    # allows us to save the current token and move onto the next token but only if its not a EOF token
+    def move_to_next_token(self):
+        current_token = self.look_at_current_token()
+
+        if not self.check_for_eof():
+            self.current += 1
+
+        return current_token
+
+
+    # checks to see if the current token is the token type we want then moves on
+    def token_we_want(self, token_type):
+        if self.look_at_current_token().token_type == token_type:
+            self.move_to_next_token()
+            return True
+        else:
+            return False
+
+    # saves the current token first becasue matching a token moves to the next one
+    # for numbers and strings it puts the scanners valye into a literal value and for true, false, and nil it turns them into True, False, and None
+    # for parentheseis, it goes through the expression insdie and wraps it in a Grouping
+    def parse_primary(self):
+        token = self.look_at_current_token()
+
+        if self.token_we_want(TokenType.NUMBER):
+            return Literal(token.string_token)
+
+        if self.token_we_want(TokenType.STRING):
+            return Literal(token.string_token)
+
+        if self.token_we_want(TokenType.TRUE):
+            return Literal(True)
+
+        if self.token_we_want(TokenType.FALSE):
+                    return Literal(False)
+
+        if self.token_we_want(TokenType.NIL):
+                    return Literal(None)
+
+        if self.token_we_want(TokenType.LEFT_PAREN):
+            expression = self.parse_expression()
+
+            if not self.token_we_want(TokenType.RIGHT_PAREN):
+                raise SyntaxError(f"Woah bro, im over here at line {token.line_number} looking for a ')'\n and guess what I cant find... Thats right, your ')'. You should go fix that")
+
+            return Grouping(expression)
+        else:
+            raise SyntaxError(f"Hey smart guy, take a peek on line {token.line_number}. There should be an expression but I dont see one. You go fix now, ok?")
+
+    # reads the left side, if the token is POWER, it saves that then calls the function again to read the right side
+    # that allows us to make a chained powers group like 2 ** (3 ** 2)
+    def parse_power(self):
+        left_expression = self.parse_primary()
+
+        if self.look_at_current_token().token_type == TokenType.POWER:
+            operator = self.move_to_next_token()
+            right_expression = self.parse_power()
+
+            return Binary(left_expression, operator, right_expression)
+        else:
+            return left_expression
+
+
+    # checks if the current toke is an ! or - then saves it as the operator, goes through the expression after it and makes a unary node
+    # if theres no unary operator then it moves onto looking through a power expression
+    def parse_unary(self):
+        token_type = self.look_at_current_token().token_type
+
+        if token_type == TokenType.BANG or token_type == TokenType.MINUS:
+            operator = self.move_to_next_token()
+            right_expression = self.parse_unary()
+            return Unary(operator, right_expression)
+
+        else:
+            return self.parse_power()
+
+
+    # reads the left side. each time it sees a * or / it saves it as the operator, reads the next unary expression and builds a binary node
+    # the purpose of making a while loop lets something like 2 * 3 / 4 be read from left to right
+    def parse_factor(self):
+        left_expression = self.parse_unary()
+
+        while(self.look_at_current_token().token_type == TokenType.STAR or self.look_at_current_token().token_type == TokenType.SLASH):
+            operator = self.move_to_next_token()
+            right_expression = self.parse_unary()
+            left_expression = Binary(left_expression,operator,right_expression)
+
+        return left_expression
+
+    # This has the same concept as parse_factor but checking for + or -
+    # it calls parse_factor for each side so multiplication and division have a higher priotirty than addition and subtraction (PEMDAS)
+    def parse_plus_and_minus(self):
+        left_expression = self.parse_factor()
+
+        while(self.look_at_current_token().token_type == TokenType.PLUS or self.look_at_current_token().token_type == TokenType.MINUS):
+            operator = self.move_to_next_token()
+            right_expression = self.parse_factor()
+            left_expression = Binary(left_expression,operator,right_expression)
+
+        return left_expression
+
+
+    # reads from left to right then combines more expressions when it sees <, <=, >, >=
+    # because it calls parese_plus_or_minus for each side, each expressions stays together before it builds the comparison
+    def parse_comparison(self):
+        left_expression = self.parse_plus_and_minus()
+
+        while(self.look_at_current_token().token_type == TokenType.GREATER
+              or self.look_at_current_token().token_type == TokenType.GREATER_EQUAL
+              or self.look_at_current_token().token_type == TokenType.LESS
+              or self.look_at_current_token().token_type == TokenType.LESS_EQUAL):
+
+            operator = self.move_to_next_token()
+            right_expression = self.parse_plus_and_minus()
+            left_expression = Binary(left_expression,operator,right_expression)
+
+        return left_expression
+
+
+    # reads a comparison expression then combinese ith with another comparison when it finds == or != and also follows the PEMDAS heirachy
+    def parse_equality(self):
+        left_expression = self.parse_comparison()
+
+        while(self.look_at_current_token().token_type == TokenType.EQUAL_EQUAL
+              or self.look_at_current_token().token_type == TokenType.BANG_EQUAL):
+
+            operator = self.move_to_next_token()
+            right_expression = self.parse_comparison()
+            left_expression = Binary(left_expression,operator,right_expression)
+
+        return left_expression
+
+
+    # reads the equality expression then combines it with another one whenever it sees and
+    def parse_and(self):
+        left_expression = self.parse_equality()
+
+        while(self.look_at_current_token().token_type == TokenType.AND):
+            operator = self.move_to_next_token()
+            right_expression = self.parse_equality()
+            left_expression = Binary(left_expression,operator,right_expression)
+
+        return left_expression
+
+
+    # same logic as 'parse_and' reads the left and right side and will make sure expressions follow their grammer rule
+    def parse_or(self):
+            left_expression = self.parse_and()
+    
+            while(self.look_at_current_token().token_type == TokenType.OR):
+                operator = self.move_to_next_token()
+                right_expression = self.parse_and()
+                left_expression = Binary(left_expression,operator,right_expression)
+    
+            return left_expression
+
+
+    # main parser that starts with the top level 'or' logic grammer rule and will work down through the grammer tree
+    def parse_expression(self):
+        return self.parse_or()
+
+
+    # goes through the input expression then cheks for an EOF. if its not, then there is an extra token and yell at the user for their mistake
+    def parse_input(self):
+        expression = self.parse_expression()
+
+        if not self.check_for_eof():
+            token = self.look_at_current_token()
+            raise SyntaxError(f"My guyyyy, I finished the expression, but found {token.raw_token} on line {token.line_number}. That's an extra token. You go fix now, ok?")
+        else:
+            return expression
 
 # End of parser
 
@@ -360,9 +588,14 @@ class Parser:
 def run(input_text):
     scanner = Scanner(input_text)
     tokens = scanner.scan_all_tokens()
+    parser = Parser(tokens)
 
-    for current_token in tokens:
-        print(current_token)
+    try:
+        expression = parser.parse_input()
+        printer = AstPrinter()
+        print("\nOutput:\n",printer.magic_printer(expression),"\n")
+    except SyntaxError as error:
+        print("\nuh ohhh, you made a little syntax error:\n",error)
 
 #Takes the file path as an argument and runs the file
 def open_file(path):
