@@ -88,6 +88,16 @@ class Binary:
         self.operator = operator
         self.right = right
 
+# this class is going to be the expression statement that will hold the expression and will be used in the interpreter to evaluate it
+class ExpressionStatement:
+    def __init__(self, expression):
+        self.expression = expression
+
+# this class is going to be the print statement that will hold the expression used in the interpreter to evaluate it and print it
+class PrintStatement:
+    def __init__(self, expression):
+        self.expression = expression
+
 
 # This class is going to be my printer that prints the actual AST expression as text and yells at you if its not recognized/supported
 class AstPrinter:
@@ -113,6 +123,179 @@ class AstPrinter:
         
         else: # if its strange
             raise TypeError(f"uhhhh, not quite sure what this is: {type(expression).__name__}")
+
+
+
+class Evaluator:
+    def evaluate(self, expression):
+        if isinstance(expression, Literal):
+            return expression.value
+
+        if isinstance(expression, Grouping):
+            return self.evaluate(expression.expression)
+
+        if isinstance(expression, Unary):
+            right_value = self.evaluate(expression.right)
+
+            if expression.operator.token_type == TokenType.BANG:
+                if right_value is None or right_value is False:
+                    return True
+                else:
+                    return False
+
+            if expression.operator.token_type == TokenType.MINUS:
+                if isinstance(right_value, bool) or not isinstance(right_value, (int, float)):
+                    # Unary minus
+                    raise TypeError("Unary minus only works on numbers. This value isn't a number, go take a peek.")
+
+                return -right_value
+
+
+        if isinstance(expression, Binary):
+            left_value = self.evaluate(expression.left)
+            operator_type = expression.operator.token_type
+
+            if operator_type == TokenType.AND:
+                if left_value is None or left_value is False:
+                    return left_value
+                else:
+                    return self.evaluate(expression.right)
+
+            if operator_type == TokenType.OR:
+                if left_value is None or left_value is False:
+                    return self.evaluate(expression.right)
+                else:
+                    return left_value
+
+            right_value = self.evaluate(expression.right)
+
+            if operator_type == TokenType.PLUS:
+                if isinstance(left_value, (int, float)) and not isinstance(left_value, bool):
+                    if isinstance(right_value, (int, float)) and not isinstance(right_value, bool):
+                        return left_value + right_value
+
+                if isinstance(left_value, str) and isinstance(right_value, str):
+                    return left_value + right_value
+
+                # Addition
+                raise TypeError("The + operator can add two numbers or join two strings. These values don't fit either pair.")
+
+            if operator_type == TokenType.MINUS:
+                if isinstance(left_value, (int, float)) and not isinstance(left_value, bool):
+                    if isinstance(right_value, (int, float)) and not isinstance(right_value, bool):
+                        return left_value - right_value
+
+                # Subtraction
+                raise TypeError("Subtraction needs two numbers. One of these values isn't numeric.")
+
+            if operator_type == TokenType.STAR:
+                if isinstance(left_value, (int, float)) and not isinstance(left_value, bool):
+                    if isinstance(right_value, (int, float)) and not isinstance(right_value, bool):
+                        return left_value * right_value
+
+                # Multiplication
+                raise TypeError("Looks like * got a non-number. It needs a number on both sides.")
+
+            if operator_type == TokenType.SLASH:
+                if isinstance(left_value, (int, float)) and not isinstance(left_value, bool):
+                    if isinstance(right_value, (int, float)) and not isinstance(right_value, bool):
+                        return left_value / right_value
+
+                # Division
+                raise TypeError("Can't divide these values as they are; division needs two numbers.")
+            if operator_type == TokenType.POWER:
+                if isinstance(left_value, (int, float)) and not isinstance(left_value, bool):
+                    if isinstance(right_value, (int, float)) and not isinstance(right_value, bool):
+                        return left_value ** right_value
+
+                # Exponentiation
+                raise TypeError("For **, both the base and the exponent need to be numbers.")
+
+            if (operator_type == TokenType.GREATER
+                    or operator_type == TokenType.GREATER_EQUAL
+                    or operator_type == TokenType.LESS
+                    or operator_type == TokenType.LESS_EQUAL):
+                if (isinstance(left_value, (int, float))
+                        and not isinstance(left_value, bool)
+                        and isinstance(right_value, (int, float))
+                        and not isinstance(right_value, bool)):
+
+                    if operator_type == TokenType.GREATER:
+                        return left_value > right_value
+
+                    if operator_type == TokenType.GREATER_EQUAL:
+                        return left_value >= right_value
+
+                    if operator_type == TokenType.LESS:
+                        return left_value < right_value
+
+                    if operator_type == TokenType.LESS_EQUAL:
+                        return left_value <= right_value
+
+                raise TypeError("Comparisons need two numbers. These values aren't both numbers.")
+
+            if (operator_type == TokenType.EQUAL_EQUAL
+                    or operator_type == TokenType.BANG_EQUAL):
+
+                if (isinstance(left_value, (int, float))
+                        and not isinstance(left_value, bool)
+                        and isinstance(right_value, (int, float))
+                        and not isinstance(right_value, bool)):
+                    values_are_equal = left_value == right_value
+                else:
+                    values_are_equal = (
+                        type(left_value) == type(right_value)
+                        and left_value == right_value
+                    )
+
+                if operator_type == TokenType.EQUAL_EQUAL:
+                    return values_are_equal
+                else:
+                    return not values_are_equal
+
+
+
+        raise TypeError(f"I don't know how to evaluate this expression: {type(expression).__name__}")
+
+
+
+
+# START OF AI HELP
+# Pseudocode for interpreting statements:
+# - Go through each statement in order.
+# - For an expression statement, evaluate its expression and do not display the result.
+# - For a print statement, evaluate its expression and display the result.
+# - Convert true, false, and nil to the words Yuck uses.
+#
+# The statement type decides whether its value should be printed.
+# END OF AI HELP
+
+
+# this is going to evaluate every expression statement and will handle when it will be displayed
+class Interpreter:
+    def __init__(self):
+        self.evaluator = Evaluator()
+
+    def interpret(self, statements):
+        for statement in statements:
+            if isinstance(statement, ExpressionStatement):
+                self.evaluator.evaluate(statement.expression)
+
+            elif isinstance(statement, PrintStatement):
+                value = self.evaluator.evaluate(statement.expression)
+                print(self.stringify(value))
+
+    def stringify(self, value):
+        if value is None:
+            return "nil"
+
+        if value is True:
+            return "true"
+
+        if value is False:
+            return "false"
+
+        return str(value)
 
 
 
@@ -570,6 +753,105 @@ class Parser:
         return self.parse_or()
 
 
+    # START OF AI HELP
+    # Pseudocode for reading one statement:
+    # - Check whether the statement starts with the print keyword.
+    # - If it does, read the expression and require a semicolon.
+    # - If it does not, read an expression and require a semicolon.
+    # - Return the matching statement node so the interpreter knows what to do.
+    #
+    # The semicolon marks where this statement ends.
+    # END OF AI HELP
+
+    # goes through the input and sees if the first token is a print statement and if it is then it will parse the expression right after it and make sure theres a ; at the end
+    # If its not a print then it will just make sure theres a ; at the end of the expression and return the whole thing as an expression statement
+    def parse_statement(self):
+            if self.token_we_want(TokenType.PRINT):
+                expression = self.parse_expression()
+
+                if not self.token_we_want(TokenType.SEMICOLON):
+                    token = self.look_at_current_token()
+                    raise SyntaxError(
+                        f"Expected a ';' after the print statement on line {token.line_number}."
+                    )
+
+                return PrintStatement(expression)
+
+            expression = self.parse_expression()
+
+            if not self.token_we_want(TokenType.SEMICOLON):
+                token = self.look_at_current_token()
+                raise SyntaxError(
+                    f"Expected a ';' after the expression statement on line {token.line_number}."
+                )
+
+            return ExpressionStatement(expression) 
+
+
+
+
+    # START OF AI HELP
+    # Pseudocode for reading a whole program:
+    # - Make an empty list for the statements.
+    # - Keep reading statements until the input reaches EOF.
+    # - If a statement has a syntax error, show the error and try to recover.
+    # - Return the statements that were read successfully.
+    #
+    # This lets the parser keep going instead of stopping at the first bad statement.
+    # END OF AI HELP
+
+    # this is going though parse_statement() until it reached the EOF then returns the list of them
+    def parse_program(self):
+        statements = []
+
+        while not self.check_for_eof():
+            try:
+                statement = self.parse_statement()
+                statements.append(statement)
+            except SyntaxError as error:
+                print("\nuh ohhh, you made a little syntax error:\n", error)
+                self.recover()
+
+        return statements
+
+
+
+
+
+    # START OF AI HELP
+    # Pseudocode for recovering after a syntax error:
+    # - Move through the tokens until reaching EOF, a semicolon, or a likely
+    #   start of the next statement.
+    # - If a semicolon is found, move past it because it ended the bad statement.
+    # - If a likely statement start is found, leave it there so parsing can try again.
+    #
+    # Skipping ahead helps one mistake from stopping the rest of the program.
+    # END OF AI HELP
+
+
+    # this is going to skip to a ; or will leave the next statement 'start' token thats ready for parsing
+    def recover(self):
+        while not self.check_for_eof():
+            token_type = self.look_at_current_token().token_type
+
+            if token_type == TokenType.SEMICOLON:
+                self.move_to_next_token()
+                return
+
+            if (token_type == TokenType.PRINT
+                    or token_type == TokenType.NUMBER
+                    or token_type == TokenType.STRING
+                    or token_type == TokenType.TRUE
+                    or token_type == TokenType.FALSE
+                    or token_type == TokenType.NIL
+                    or token_type == TokenType.LEFT_PAREN
+                    or token_type == TokenType.BANG
+                    or token_type == TokenType.MINUS):
+                return
+
+            self.move_to_next_token()
+
+
     # goes through the input expression then cheks for an EOF. if its not, then there is an extra token and yell at the user for their mistake
     def parse_input(self):
         expression = self.parse_expression()
@@ -583,7 +865,13 @@ class Parser:
 # End of parser
 
 
-
+# START OF AI HELP
+# Pseudocode for running Yuck input:
+# - Scan the source text into tokens.
+# - Give the tokens to the parser to get a list of statements.
+# - Give the statements to the interpreter to run them.
+# - Catch syntax and runtime errors and show the message.
+# END OF AI HELP
 
 def run(input_text):
     scanner = Scanner(input_text)
@@ -591,11 +879,15 @@ def run(input_text):
     parser = Parser(tokens)
 
     try:
-        expression = parser.parse_input()
-        printer = AstPrinter()
-        print("\nOutput:\n",printer.magic_printer(expression),"\n")
+        statements = parser.parse_program()
+        interpreter = Interpreter()
+        interpreter.interpret(statements)
+
     except SyntaxError as error:
-        print("\nuh ohhh, you made a little syntax error:\n",error)
+        print("\nuh ohhh, you made a little syntax error:\n", error)
+
+    except (TypeError, ZeroDivisionError) as error:
+        print("\nuh ohhh, there was a runtime error:\n", error)
 
 #Takes the file path as an argument and runs the file
 def open_file(path):
